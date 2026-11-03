@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM golang:1.21-alpine AS builder
 
+# Установка git и ca-certificates (могут понадобиться для загрузки некоторых go-модулей)
+RUN apk add --no-cache git ca-certificates
+
 WORKDIR /src
 
 # Copy all source files first so go mod tidy sees all imports
