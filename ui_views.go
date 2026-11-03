@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html"
