@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    restart: unless-stopped
+    volumes:
+      - ./config:/config
+    ports:
+      - "9091:9091"
+    environment:
+      - TZ=UTC
+
+  # Guard (docker-proxy) container: has access to docker.sock and guards authelia
+  authelia-guard:
+    image: ghcr.io/pushkinmazila2/authelia-ui:latest
+    container_name: authelia-guard
+    restart: unless-stopped
+    command: ["guard"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LISTEN_ADDR=:2375
+      - AUTHELIA_CONTAINER_NAME=authelia
+      - DOCKER_SOCKET=/var/run/docker.sock
+    expose:
+      - "2375"
+
+  # UI container: clean HTML interface, manages configs/database, talks to guard
+  authelia-ui:
+    image: ghcr.io/pushkinmazila2/authelia-ui:latest
+    container_name: authelia-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config:rw
+    environment:
+      - LISTEN_ADDR=:8080
+      - CONFIG_PATH=/config/configuration.yml
+      - USERS_PATH=/config/users_database.yml
+      - NOTIFICATION_PATH=/config/notification.txt
+      - DB_PATH=/config/db.sqlite3
+      - GUARD_URL=http://authelia-guard:2375
+    depends_on:
+      - authelia-guard
+      - authelia
+
