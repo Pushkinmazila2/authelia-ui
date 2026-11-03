@@ -28,9 +28,9 @@ services:
       - ./config:/config:rw
     environment:
       - LISTEN_ADDR=:8080
-      - CONFIG_PATH=/config/configuration.yml
-      - USERS_PATH=/config/users_database.yml
-      - NOTIFICATION_PATH=/config/notification.txt
-      - DB_PATH=/config/db.sqlite3
+      - CONFIG_PATH={$CONFIG_PATH:-/config/configuration.yml}
+      - NOTIFICATION_PATH=${NOTIFICATION_PATH:-/config/notification.txt}
+      - USERS_PATH=${USERS_PATH:-/config/users_database.yml}
+      - DB_PATH=${DB_PATH:-/config/db.sqlite3}
       - GUARD_URL=http://authelia-guard:2375
 
