@@ -29,7 +29,7 @@ func init() {
 	if uiPassword == "" {
 		log.Println("[security] UI_PASSWORD is not set. UI authentication is disabled.")
 	} else {
-		log.Printf("[security] UI auth enabled. Expected user: %q", uiUser)
+		log.Printf("[security] UI auth enabled. Expected user: %q, expected password length: %d", uiUser, len(uiPassword))
 	}
 }
 
@@ -132,13 +132,15 @@ button{width:95%%;padding:6px;background:#0033cc;color:#fff;border:1px solid #00
 	if r.Method == http.MethodPost {
 		_ = r.ParseForm()
 		user := strings.TrimSpace(r.FormValue("username"))
-		pass := r.FormValue("password")
+		rawPass := r.FormValue("password")
+		cleanPass := strings.TrimSpace(strings.Trim(rawPass, "\r\n\"'"))
+		cleanExpectedPass := strings.TrimSpace(strings.Trim(uiPassword, "\r\n\"'"))
 
-		userMatch := (uiUser == "") || (user == uiUser)
-		passMatch := (uiPassword != "") && (pass == uiPassword)
+		userMatch := (uiUser == "") || strings.EqualFold(user, uiUser)
+		passMatch := (cleanExpectedPass != "") && (rawPass == uiPassword || cleanPass == cleanExpectedPass)
 
 		if userMatch && passMatch {
-			log.Printf("[auth] Login successful: %q", user)
+			log.Printf("[auth] Login successful for user: %q", user)
 			exp := time.Now().Add(24 * time.Hour).Unix()
 			val := signCookie(user, exp)
 			http.SetCookie(w, &http.Cookie{
@@ -152,7 +154,9 @@ button{width:95%%;padding:6px;background:#0033cc;color:#fff;border:1px solid #00
 			http.Redirect(w, r, "/?tab=dashboard", http.StatusFound)
 			return
 		}
-		log.Printf("[auth] Login failed for user=%q (expected %q)", user, uiUser)
+
+		log.Printf("[auth] Login failed: user=%q (expected %q, match=%t), received_pass_len=%d, expected_pass_len=%d",
+			user, uiUser, userMatch, len(cleanPass), len(cleanExpectedPass))
 		http.Redirect(w, r, "/login?err=1", http.StatusFound)
 	}
 }
