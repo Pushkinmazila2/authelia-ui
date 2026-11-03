@@ -1,19 +1,10 @@
 package main
 
 import (
-	"bufio"
-	"database/sql"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
-	"net/url"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
-
 	_ "modernc.org/sqlite"
 )
 
