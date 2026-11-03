@@ -121,9 +121,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 fieldset{border:1px solid #999;padding:14px;background:#fff;}input{width:90%%;padding:5px;margin:4px 0 10px;font-family:monospace;}
 button{width:95%%;padding:6px;background:#0033cc;color:#fff;border:1px solid #002299;font-weight:bold;cursor:pointer;font-family:monospace;}
 </style></head><body><fieldset><legend>[Authelia UI Login]</legend>%s
-<form action="/login" method="POST">
-<label>Username:</label><input type="text" name="username" value="%s" required autofocus>
-<label>Password:</label><input type="password" name="password" required>
+<form action="/login" method="POST" autocomplete="off">
+<label>Username:</label><input type="text" name="username" value="%s" autocomplete="username" required autofocus>
+<label>Password:</label><input type="password" name="password" autocomplete="current-password" required>
 <button type="submit">Sign In</button>
 </form></fieldset></body></html>`, errMsg, strings.ReplaceAll(uiUser, `"`, `&quot;`))
 		return
