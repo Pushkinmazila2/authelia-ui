@@ -80,11 +80,6 @@ func writeOIDCClients(clients []OIDCClient) error {
 		idp["oidc"] = oidc
 	}
 	oidc["clients"] = clients
-
-	b, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
 	return writeConfigFile(raw, getACFromMap(raw))
 }
 

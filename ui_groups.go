@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"net/url"
 	"strings"
 )
 

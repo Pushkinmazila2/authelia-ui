@@ -77,7 +77,7 @@ func verifyCookie(cookieVal string) bool {
 	if len(parts) != 3 {
 		return false
 	}
-	username, expStr, sig := parts[0], parts[1], parts[2]
+	username, expStr := parts[0], parts[1]
 	exp, err := strconv.ParseInt(expStr, 10, 64)
 	if err != nil || time.Now().Unix() > exp {
 		return false
