@@ -33,7 +33,4 @@ services:
       - NOTIFICATION_PATH=/config/notification.txt
       - DB_PATH=/config/db.sqlite3
       - GUARD_URL=http://authelia-guard:2375
-    depends_on:
-      - authelia-guard
-      - authelia
 
