@@ -79,6 +79,10 @@ func queryStatus() AutheliaStatus {
 }
 
 func renderHeader(w io.Writer, currentTab, msg string) {
+	logoutLink := ""
+	if uiPassword != "" {
+		logoutLink = `<a href="/logout" style="float:right;color:#c00;">[Logout]</a>`
+	}
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -119,16 +123,22 @@ legend { font-weight: bold; padding: 0 4px; }
 <div class="nav">
   <a href="/?tab=dashboard" class="%s">Dashboard</a>
   <a href="/?tab=users" class="%s">Users</a>
+  <a href="/?tab=groups" class="%s">Groups</a>
+  <a href="/?tab=clients" class="%s">OIDC Clients</a>
   <a href="/?tab=rules" class="%s">Access Rules</a>
   <a href="/?tab=sessions" class="%s">Sessions</a>
   <a href="/?tab=logs" class="%s">Logs</a>
+  %s
 </div>
 `,
 		act(currentTab == "dashboard"),
 		act(currentTab == "users"),
+		act(currentTab == "groups"),
+		act(currentTab == "clients"),
 		act(currentTab == "rules"),
 		act(currentTab == "sessions"),
 		act(currentTab == "logs"),
+		logoutLink,
 	)
 	if msg != "" {
 		fmt.Fprintf(w, `<div class="msg-banner">%s</div>`, html.EscapeString(msg))

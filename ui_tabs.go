@@ -18,6 +18,10 @@ func handleUIRoute(w http.ResponseWriter, r *http.Request) {
 	switch tab {
 	case "users":
 		renderUsersTab(w, tab, msg, r.URL.Query().Get("edit"))
+	case "groups":
+		renderGroupsTab(w, tab, msg)
+	case "clients":
+		renderClientsTab(w, tab, msg, r.URL.Query().Get("secret"))
 	case "rules":
 		renderRulesTab(w, tab, msg, r.URL.Query().Get("edit"))
 	case "sessions":
