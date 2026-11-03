@@ -2,10 +2,12 @@
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /src
-COPY go.mod ./
-RUN go mod tidy
 
+# Copy all source files first so go mod tidy sees all imports
 COPY . .
+
+# Download dependencies and generate valid go.sum
+RUN go mod tidy && go mod download
 
 # Build ultra-lightweight standalone binary with no CGO
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -22,4 +24,5 @@ COPY --from=builder /bin/authelia-ui /authelia-ui
 EXPOSE 8080 2375
 
 ENTRYPOINT ["/authelia-ui"]
+
 
