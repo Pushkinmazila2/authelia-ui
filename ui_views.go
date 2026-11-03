@@ -6,10 +6,7 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
