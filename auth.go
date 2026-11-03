@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -15,29 +16,27 @@ import (
 )
 
 var (
-	apiToken      = os.Getenv("API_TOKEN")
-	uiUser        = getEnv("UI_USER", "")
-	uiPassword    = getEnv("UI_PASSWORD", "")
+	apiToken      = strings.TrimSpace(strings.Trim(os.Getenv("API_TOKEN"), "\"'"))
+	uiUser        = strings.TrimSpace(strings.Trim(getEnv("UI_USER", "admin"), "\"'"))
+	uiPassword    = strings.TrimSpace(strings.Trim(getEnv("UI_PASSWORD", ""), "\"'"))
 	sessionSecret = getEnv("SESSION_SECRET", "authelia-ui-secret-key-change-me")
 )
 
 func init() {
 	if apiToken == "" {
-		log.Println("[security] WARNING: API_TOKEN is empty. /api endpoints will reject requests until API_TOKEN is set.")
+		log.Println("[security] API_TOKEN is empty. /api endpoints will reject requests.")
 	}
 	if uiPassword == "" {
-		log.Println("[security] NOTICE: UI_PASSWORD is not set. UI authentication is disabled.")
+		log.Println("[security] UI_PASSWORD is not set. UI authentication is disabled.")
+	} else {
+		log.Printf("[security] UI auth enabled. Expected user: %q", uiUser)
 	}
 }
-
-// -----------------------------------------------------------------------------
-// API BEARER TOKEN MIDDLEWARE
-// -----------------------------------------------------------------------------
 
 func apiAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if apiToken == "" {
-			http.Error(w, `{"error":"unauthorized: API_TOKEN not configured on server"}`, http.StatusUnauthorized)
+			http.Error(w, `{"error":"unauthorized: API_TOKEN not set"}`, 401)
 			return
 		}
 		authHdr := r.Header.Get("Authorization")
@@ -49,46 +48,49 @@ func apiAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		} else if xKey := r.Header.Get("X-API-Key"); xKey != "" {
 			token = xKey
 		}
-
+		token = strings.TrimSpace(token)
 		if subtle.ConstantTimeCompare([]byte(token), []byte(apiToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"unauthorized: invalid or missing bearer token"}`))
+			w.WriteHeader(401)
+			w.Write([]byte(`{"error":"unauthorized: invalid token"}`))
 			return
 		}
 		next(w, r)
 	}
 }
 
-// -----------------------------------------------------------------------------
-// UI COOKIE AUTHENTICATION
-// -----------------------------------------------------------------------------
-
 func signCookie(username string, exp int64) string {
 	payload := fmt.Sprintf("%s:%d", username, exp)
 	mac := hmac.New(sha256.New, []byte(sessionSecret))
 	mac.Write([]byte(payload))
 	sig := hex.EncodeToString(mac.Sum(nil))
-	return fmt.Sprintf("%s:%s", payload, sig)
+	raw := fmt.Sprintf("%s:%s", payload, sig)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
 func verifyCookie(cookieVal string) bool {
-	parts := strings.Split(cookieVal, ":")
+	rawBytes, err := base64.RawURLEncoding.DecodeString(cookieVal)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(string(rawBytes), ":")
 	if len(parts) != 3 {
 		return false
 	}
-	username, expStr := parts[0], parts[1]
+	username, expStr, sig := parts[0], parts[1], parts[2]
 	exp, err := strconv.ParseInt(expStr, 10, 64)
 	if err != nil || time.Now().Unix() > exp {
 		return false
 	}
-	expectedSig := signCookie(username, exp)
-	return subtle.ConstantTimeCompare([]byte(cookieVal), []byte(expectedSig)) == 1
+	payload := fmt.Sprintf("%s:%d", username, exp)
+	mac := hmac.New(sha256.New, []byte(sessionSecret))
+	mac.Write([]byte(payload))
+	expectedSig := hex.EncodeToString(mac.Sum(nil))
+	return subtle.ConstantTimeCompare([]byte(sig), []byte(expectedSig)) == 1
 }
 
 func uiAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// If UI_PASSWORD is not set, auth is disabled
 		if uiPassword == "" {
 			next(w, r)
 			return
@@ -98,56 +100,45 @@ func uiAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/login", http.StatusFound)
 	}
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		cookie, err := r.Cookie("authelia_ui_session")
+		if err == nil && verifyCookie(cookie.Value) {
+			http.Redirect(w, r, "/?tab=dashboard", http.StatusFound)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		errMsg := ""
 		if r.URL.Query().Get("err") != "" {
-			errMsg = `<div style="color:#721c24;background:#f8d7da;border:1px solid #f5c6cb;padding:6px 10px;margin-bottom:12px;font-size:12px;">Invalid username or password.</div>`
+			errMsg = `<div style="color:#721c24;background:#f8d7da;border:1px solid #f5c6cb;padding:6px;margin-bottom:10px;font-size:12px;">Invalid credentials.</div>`
 		}
-		fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Authelia Console - Login</title>
-<style>
-body { font-family: monospace, sans-serif; background: #fafafa; margin: 40px auto; max-width: 320px; line-height: 1.5; }
-fieldset { border: 1px solid #bbb; padding: 14px; background: #fff; }
-legend { font-weight: bold; }
-input { width: 95%%; padding: 5px; margin: 4px 0 12px; font-family: monospace; font-size: 13px; }
-button { width: 100%%; padding: 6px; background: #0033cc; color: #fff; border: 1px solid #002299; font-weight: bold; cursor: pointer; font-family: monospace; }
-</style>
-</head>
-<body>
-<fieldset>
-  <legend>[Authelia UI Login]</legend>
-  %s
-  <form action="/login" method="POST">
-    <label>Username:</label>
-    <input type="text" name="username" required autofocus>
-    <label>Password:</label>
-    <input type="password" name="password" required>
-    <button type="submit">Sign In</button>
-  </form>
-</fieldset>
-</body>
-</html>`, errMsg)
+		fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Authelia UI Login</title>
+<style>body{font-family:monospace;background:#fafafa;margin:60px auto;max-width:320px;font-size:13px;}
+fieldset{border:1px solid #999;padding:14px;background:#fff;}input{width:90%%;padding:5px;margin:4px 0 10px;font-family:monospace;}
+button{width:95%%;padding:6px;background:#0033cc;color:#fff;border:1px solid #002299;font-weight:bold;cursor:pointer;font-family:monospace;}
+</style></head><body><fieldset><legend>[Authelia UI Login]</legend>%s
+<form action="/login" method="POST">
+<label>Username:</label><input type="text" name="username" value="%s" required autofocus>
+<label>Password:</label><input type="password" name="password" required>
+<button type="submit">Sign In</button>
+</form></fieldset></body></html>`, errMsg, strings.ReplaceAll(uiUser, `"`, `&quot;`))
 		return
 	}
 
 	if r.Method == http.MethodPost {
-		r.ParseForm()
+		_ = r.ParseForm()
 		user := strings.TrimSpace(r.FormValue("username"))
 		pass := r.FormValue("password")
 
-		userMatch := uiUser == "" || subtle.ConstantTimeCompare([]byte(user), []byte(uiUser)) == 1
-		passMatch := subtle.ConstantTimeCompare([]byte(pass), []byte(uiPassword)) == 1
+		userMatch := (uiUser == "") || (user == uiUser)
+		passMatch := (uiPassword != "") && (pass == uiPassword)
 
 		if userMatch && passMatch {
+			log.Printf("[auth] Login successful: %q", user)
 			exp := time.Now().Add(24 * time.Hour).Unix()
 			val := signCookie(user, exp)
 			http.SetCookie(w, &http.Cookie{
@@ -158,10 +149,11 @@ button { width: 100%%; padding: 6px; background: #0033cc; color: #fff; border: 1
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   86400,
 			})
-			http.Redirect(w, r, "/?tab=dashboard", http.StatusSeeOther)
+			http.Redirect(w, r, "/?tab=dashboard", http.StatusFound)
 			return
 		}
-		http.Redirect(w, r, "/login?err=1", http.StatusSeeOther)
+		log.Printf("[auth] Login failed for user=%q (expected %q)", user, uiUser)
+		http.Redirect(w, r, "/login?err=1", http.StatusFound)
 	}
 }
 
@@ -173,5 +165,6 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		MaxAge:   -1,
 	})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/login", http.StatusFound)
 }
+
