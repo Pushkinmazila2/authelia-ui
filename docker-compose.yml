@@ -40,4 +40,6 @@ services:
       - API_TOKEN=my-secure-bearer-token
 
 volumes:
-  authelia_db:
+  authelia_db_shared:
+    external: true
+    name: authelia2_authelia_db
