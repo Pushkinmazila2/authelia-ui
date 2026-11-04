@@ -25,7 +25,9 @@ services:
     ports:
       - "8383:8080"
     volumes:
-      - ./config:/config:rw
+      - authelia_db:/data/authelia_db
+      - ./users_database.yml:/data/users_database.yml
+      - ./configuration.yml:/data/configuration.yml
     environment:
       - LISTEN_ADDR=:8080
       - CONFIG_PATH=${CONFIG_PATH:-/config/configuration.yml}
