@@ -79,6 +79,7 @@ func runUI() {
 	mux.HandleFunc("/groups/delete", uiAuthMiddleware(handleUIGroupDelete))
 	mux.HandleFunc("/clients/save", uiAuthMiddleware(handleUIClientSave))
 	mux.HandleFunc("/clients/delete", uiAuthMiddleware(handleUIClientDelete))
+	mux.HandleFunc("/clients/jwks/generate", uiAuthMiddleware(handleUIJWKSGenerate))
 	mux.HandleFunc("/rules/save", uiAuthMiddleware(handleUIRuleSave))
 	mux.HandleFunc("/rules/move", uiAuthMiddleware(handleUIRuleMove))
 	mux.HandleFunc("/rules/delete", uiAuthMiddleware(handleUIRuleDelete))

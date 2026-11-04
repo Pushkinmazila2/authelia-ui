@@ -21,9 +21,30 @@ Save this secret now! Authelia stores it as an Argon2id hash and it cannot be di
 </div>`, html.EscapeString(secretMsg))
 	}
 
+	jwksConfigured := isOIDCJWKSConfigured()
+	jwksStatusBadge := `<span style="background:#28a745;color:white;padding:2px 8px;border-radius:10px;font-size:12px;">Active (Ready for Authelia 4.38+)</span>`
+	if !jwksConfigured {
+		jwksStatusBadge = `<span style="background:#dc3545;color:white;padding:2px 8px;border-radius:10px;font-size:12px;">Missing (Authelia 4.38+ requires JWKS)</span>`
+	}
+
+	btnLabel := "Rotate"
+	if !jwksConfigured {
+		btnLabel = "Generate"
+	}
+
 	fmt.Fprintf(w, `
 <h2>OIDC / OAuth 2.0 Clients</h2>
-<p style="color:#555;">Managed in <code>%s</code> under <code>identity_providers.oidc.clients</code>.</p>
+<p style="color:#555;">Managed in <code>%s</code> under <code>identity_providers.oidc</code>.</p>
+
+<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <strong>JWKS Key Status:</strong> %s
+    <div style="font-size:12px;color:#666;margin-top:4px;">Authelia v4.38+ requires a private JWKS key in <code>identity_providers.oidc.jwks</code> for ID token signing.</div>
+  </div>
+  <form action="/clients/jwks/generate" method="POST" style="margin:0;">
+    <button type="submit" class="btn" style="padding:6px 14px;font-size:13px;cursor:pointer;">%s JWKS Key</button>
+  </form>
+</div>
 
 <fieldset>
   <legend>Register New OIDC Client</legend>
@@ -45,7 +66,7 @@ Save this secret now! Authelia stores it as an Argon2id hash and it cannot be di
 
 <table>
   <thead><tr><th>Client ID</th><th>Description</th><th>Policy</th><th>Public</th><th>Redirect URIs</th><th>Scopes</th><th>Action</th></tr></thead>
-  <tbody>`, html.EscapeString(configPath))
+  <tbody>`, html.EscapeString(configPath), jwksStatusBadge, btnLabel)
 
 	for _, c := range clients {
 		uris := strings.Join(c.RedirectURIs, ", ")
@@ -170,4 +191,16 @@ func handleUIClientDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Redirect(w, r, "/?tab=clients&msg=Client+deleted", http.StatusSeeOther)
+}
+
+func handleUIJWKSGenerate(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if err := generateAndSaveOIDCJWKS(); err != nil {
+			log.Printf("[oidc] Error generating JWKS: %v", err)
+			http.Redirect(w, r, "/?tab=clients&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			return
+		}
+		log.Printf("[oidc] JWKS RSA key generated and saved by %s", r.RemoteAddr)
+	}
+	http.Redirect(w, r, "/?tab=clients&msg=JWKS+key+generated+successfully", http.StatusSeeOther)
 }

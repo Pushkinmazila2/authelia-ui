@@ -2,7 +2,10 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"sort"
 	"strings"
@@ -75,6 +78,115 @@ func writeOIDCClients(clients []OIDCClient) error {
 		idp["oidc"] = oidc
 	}
 	oidc["clients"] = clients
+
+	// Ensure Authelia 4.38+ compatibility: auto-generate JWKS and hmac_secret if missing
+	if err := ensureOIDCSettings(oidc); err != nil {
+		return err
+	}
+
+	return writeConfigFile(raw, getACFromMap(raw))
+}
+
+func ensureOIDCSettings(oidc map[string]interface{}) error {
+	// 1. Ensure hmac_secret
+	hmac, _ := oidc["hmac_secret"].(string)
+	if hmac == "" {
+		sec, err := generateRandomSecret(32)
+		if err == nil {
+			oidc["hmac_secret"] = sec
+		}
+	}
+
+	// 2. Ensure JWKS
+	jwksRaw, exists := oidc["jwks"]
+	needJWKS := false
+	if !exists || jwksRaw == nil {
+		needJWKS = true
+	} else if jwksList, ok := jwksRaw.([]interface{}); ok && len(jwksList) == 0 {
+		needJWKS = true
+	}
+
+	if needJWKS {
+		keyPEM, err := generateRSAPrivateKeyPEM(2048)
+		if err != nil {
+			return err
+		}
+		oidc["jwks"] = []map[string]interface{}{
+			{
+				"key": keyPEM,
+			},
+		}
+	}
+	return nil
+}
+
+func generateRSAPrivateKeyPEM(bits int) (string, error) {
+	privKey, err := rsa.GenerateKey(rand.Reader, bits)
+	if err != nil {
+		return "", err
+	}
+	privDER := x509.MarshalPKCS1PrivateKey(privKey)
+	privBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privDER,
+	}
+	return string(pem.EncodeToMemory(privBlock)), nil
+}
+
+func isOIDCJWKSConfigured() bool {
+	raw, _, err := readConfigFile()
+	if err != nil {
+		return false
+	}
+	idp, ok := raw["identity_providers"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	oidc, ok := idp["oidc"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	jwksRaw, exists := oidc["jwks"]
+	if !exists || jwksRaw == nil {
+		return false
+	}
+	if list, ok := jwksRaw.([]interface{}); ok && len(list) > 0 {
+		return true
+	}
+	return false
+}
+
+func generateAndSaveOIDCJWKS() error {
+	raw, _, err := readConfigFile()
+	if err != nil {
+		return err
+	}
+	idp, ok := raw["identity_providers"].(map[string]interface{})
+	if !ok {
+		idp = make(map[string]interface{})
+		raw["identity_providers"] = idp
+	}
+	oidc, ok := idp["oidc"].(map[string]interface{})
+	if !ok {
+		oidc = make(map[string]interface{})
+		idp["oidc"] = oidc
+	}
+
+	keyPEM, err := generateRSAPrivateKeyPEM(2048)
+	if err != nil {
+		return err
+	}
+	oidc["jwks"] = []map[string]interface{}{
+		{
+			"key": keyPEM,
+		},
+	}
+	hmac, _ := oidc["hmac_secret"].(string)
+	if hmac == "" {
+		sec, _ := generateRandomSecret(32)
+		oidc["hmac_secret"] = sec
+	}
+
 	return writeConfigFile(raw, getACFromMap(raw))
 }
 
