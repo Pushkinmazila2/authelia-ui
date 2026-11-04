@@ -25,7 +25,7 @@ services:
     ports:
       - "8383:8080"
     volumes:
-      - authelia_db:/data/authelia_db
+      - authelia2_authelia_db:/data/authelia_db
       - ./users_database.yml:/data/users_database.yml
       - ./configuration.yml:/data/configuration.yml
     environment:
