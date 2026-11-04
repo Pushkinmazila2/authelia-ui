@@ -39,4 +39,5 @@ services:
       - UI_PASSWORD=adminpassword
       - API_TOKEN=my-secure-bearer-token
 
-
+volumes:
+  authelia_db:
