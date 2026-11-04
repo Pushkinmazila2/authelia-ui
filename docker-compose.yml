@@ -25,16 +25,20 @@ services:
     ports:
       - "8383:8080"
     volumes:
-      - ./config:/config:rw
+      - authelia_db_shared:/data/authelia_db
+      - ./:/data/authelia_config
     environment:
       - LISTEN_ADDR=:8080
-      - CONFIG_PATH=${CONFIG_PATH:-/config/configuration.yml}
+      - CONFIG_PATH=/data/authelia_config/configuration.yml
+      - USERS_PATH=/data/authelia_config/users_database.yml
+      - DB_PATH=/data/authelia_db/db.sqlite3
       - NOTIFICATION_PATH=${NOTIFICATION_PATH:-/config/notification.txt}
-      - USERS_PATH=${USERS_PATH:-/config/users_database.yml}
-      - DB_PATH=${DB_PATH:-/config/db.sqlite3}
       - GUARD_URL=http://authelia-guard:2375
       - UI_USER=admin
       - UI_PASSWORD=adminpassword
       - API_TOKEN=my-secure-bearer-token
 
-
+volumes:
+  authelia_db_shared:
+    external: true
+    name: authelia2_authelia_db
