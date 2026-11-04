@@ -74,6 +74,7 @@ func runUI() {
 	mux.HandleFunc("/restart", uiAuthMiddleware(handleUIRestart))
 	mux.HandleFunc("/users/save", uiAuthMiddleware(handleUIUserSave))
 	mux.HandleFunc("/users/delete", uiAuthMiddleware(handleUIUserDelete))
+	mux.HandleFunc("/groups/add", uiAuthMiddleware(handleUIGroupAdd))
 	mux.HandleFunc("/groups/rename", uiAuthMiddleware(handleUIGroupRename))
 	mux.HandleFunc("/groups/delete", uiAuthMiddleware(handleUIGroupDelete))
 	mux.HandleFunc("/clients/save", uiAuthMiddleware(handleUIClientSave))

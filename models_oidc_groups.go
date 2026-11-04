@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -28,9 +29,6 @@ type GroupInfo struct {
 }
 
 func readOIDCClients() ([]OIDCClient, error) {
-	fileLock.RLock()
-	defer fileLock.RUnlock()
-
 	raw, _, err := readConfigFile()
 	if err != nil {
 		return nil, err
@@ -61,9 +59,6 @@ func readOIDCClients() ([]OIDCClient, error) {
 }
 
 func writeOIDCClients(clients []OIDCClient) error {
-	fileLock.Lock()
-	defer fileLock.Unlock()
-
 	raw, _, err := readConfigFile()
 	if err != nil {
 		return err
@@ -175,3 +170,36 @@ func deleteGroupInUsers(groupName string) error {
 	}
 	return writeUsersFile(udb)
 }
+func addGroupToUsers(groupName string, usernames []string) error {
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		return fmt.Errorf("group name cannot be empty")
+	}
+	udb, err := readUsersFile()
+	if err != nil {
+		return err
+	}
+
+	// Add group to specified users
+	for _, u := range usernames {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if rec, exists := udb.Users[u]; exists {
+			alreadyIn := false
+			for _, g := range rec.Groups {
+				if g == groupName {
+					alreadyIn = true
+					break
+				}
+			}
+			if !alreadyIn {
+				rec.Groups = append(rec.Groups, groupName)
+				udb.Users[u] = rec
+			}
+		}
+	}
+	return writeUsersFile(udb)
+}
+

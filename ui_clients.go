@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -142,7 +143,11 @@ func handleUIClientSave(w http.ResponseWriter, r *http.Request) {
 
 	clients, _ := readOIDCClients()
 	clients = append(clients, client)
-	writeOIDCClients(clients)
+	if err := writeOIDCClients(clients); err != nil {
+		log.Printf("[oidc] Error writing clients: %v", err)
+	} else {
+		log.Printf("[oidc] Client registered: %q (policy: %s, public: %v) by %s", client.ID, client.AuthorizationPolicy, client.Public, r.RemoteAddr)
+	}
 
 	redir := "/?tab=clients&msg=Client+registered"
 	if rawSecret != "" {
@@ -159,6 +164,7 @@ func handleUIClientDelete(w http.ResponseWriter, r *http.Request) {
 			if c.ID == id {
 				clients = append(clients[:i], clients[i+1:]...)
 				writeOIDCClients(clients)
+				log.Printf("[oidc] Client deleted: %q by %s", id, r.RemoteAddr)
 				break
 			}
 		}

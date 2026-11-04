@@ -64,8 +64,12 @@ func queryStatus() AutheliaStatus {
 				st.Running = g.AutheliaRunning
 				st.ContainerName = g.AutheliaContainer
 				st.ContainerImage = g.AutheliaImage
+				st.ContainerHealth = g.AutheliaHealth
+				st.ContainerRestartCount = g.AutheliaRestartCount
+				st.ContainerIP = g.AutheliaIP
 				st.Uptime = g.AutheliaUptime
 				st.HostConfigPath = g.HostConfigPath
+				st.Mounts = g.Mounts
 			}
 		}
 	} else if _, err := os.Stat(dockerSocket); err == nil {
@@ -73,6 +77,54 @@ func queryStatus() AutheliaStatus {
 		if cid, err := findTargetContainer(c); err == nil {
 			st.Running = true
 			st.ContainerName = cid[:12]
+			if resp, err := c.Get("http://localhost/containers/" + cid + "/json"); err == nil {
+				defer resp.Body.Close()
+				var insp struct {
+					Name         string `json:"Name"`
+					Image        string `json:"Image"`
+					RestartCount int    `json:"RestartCount"`
+					State        struct {
+						Running   bool   `json:"Running"`
+						StartedAt string `json:"StartedAt"`
+						Health    struct {
+							Status string `json:"Status"`
+						} `json:"Health"`
+					} `json:"State"`
+					NetworkSettings struct {
+						IPAddress string `json:"IPAddress"`
+					} `json:"NetworkSettings"`
+					Mounts []struct {
+						Source      string `json:"Source"`
+						Destination string `json:"Destination"`
+					} `json:"Mounts"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&insp); err == nil {
+					st.ContainerName = strings.TrimPrefix(insp.Name, "/")
+					st.ContainerImage = insp.Image
+					st.ContainerRestartCount = insp.RestartCount
+					st.ContainerIP = insp.NetworkSettings.IPAddress
+					st.ContainerHealth = insp.State.Health.Status
+					if st.ContainerHealth == "" {
+						if insp.State.Running {
+							st.ContainerHealth = "healthy"
+						} else {
+							st.ContainerHealth = "stopped"
+						}
+					}
+					if t, err := time.Parse(time.RFC3339Nano, insp.State.StartedAt); err == nil {
+						d := time.Since(t).Truncate(time.Second)
+						h := int(d.Hours())
+						st.Uptime = fmt.Sprintf("%dd %dh %dm", h/24, h%24, int(d.Minutes())%60)
+					}
+					st.Mounts = make(map[string]string)
+					for _, m := range insp.Mounts {
+						st.Mounts[m.Destination] = m.Source
+						if m.Destination == "/config" {
+							st.HostConfigPath = m.Source
+						}
+					}
+				}
+			}
 		}
 	}
 	return st

@@ -20,6 +20,27 @@ func handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, groups)
 }
+func handleAPIGroupAdd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		apiError(w, 405, "method not allowed")
+		return
+	}
+	var req struct {
+		Name  string   `json:"name"`
+		Users []string `json:"users"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	if req.Name == "" {
+		apiError(w, 400, "name required")
+		return
+	}
+	if err := addGroupToUsers(req.Name, req.Users); err != nil {
+		apiError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 201, map[string]string{"status": "created", "name": req.Name})
+}
+
 
 func handleAPIGroupRename(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

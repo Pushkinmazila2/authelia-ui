@@ -87,6 +87,7 @@ Send `Authorization: Bearer <API_TOKEN>` with all requests:
 | `GET`, `POST` | `/api/users` | List users or create new user (auto Argon2id) |
 | `GET`, `PUT`, `DELETE` | `/api/users/{username}` | Get, update, or delete user |
 | `GET` | `/api/groups` | List all unique groups and their member list |
+| `POST` | `/api/groups/add` | Add or assign group to users (`name`, `users`) |
 | `POST` | `/api/groups/rename` | Rename group across all users (`old_name`, `new_name`) |
 | `POST` | `/api/groups/delete` | Delete group from all users (`name`) |
 | `GET`, `POST` | `/api/clients` | List OIDC clients or register new client |

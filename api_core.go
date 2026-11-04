@@ -25,6 +25,7 @@ func registerAPIEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("/api/users/", apiAuthMiddleware(handleAPIUserItem))
 
 	mux.HandleFunc("/api/groups", apiAuthMiddleware(handleAPIGroups))
+	mux.HandleFunc("/api/groups/add", apiAuthMiddleware(handleAPIGroupAdd))
 	mux.HandleFunc("/api/groups/rename", apiAuthMiddleware(handleAPIGroupRename))
 	mux.HandleFunc("/api/groups/delete", apiAuthMiddleware(handleAPIGroupDelete))
 

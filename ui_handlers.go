@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,21 +48,38 @@ func handleUIUserSave(w http.ResponseWriter, r *http.Request) {
 	u := strings.TrimSpace(r.FormValue("username"))
 	disp := strings.TrimSpace(r.FormValue("displayname"))
 	email := strings.TrimSpace(r.FormValue("email"))
-	groupsRaw := strings.TrimSpace(r.FormValue("groups"))
 	pass := r.FormValue("password")
 	disabled := r.FormValue("disabled") == "1"
+	newGroup := strings.TrimSpace(r.FormValue("new_group"))
 
 	if u == "" {
 		http.Redirect(w, r, "/?tab=users&msg=Username+required", http.StatusSeeOther)
 		return
 	}
-	var groups []string
-	if groupsRaw != "" {
-		for _, g := range strings.Split(groupsRaw, ",") {
-			if g = strings.TrimSpace(g); g != "" {
-				groups = append(groups, g)
+
+	groupSet := make(map[string]bool)
+	// Process selected groups from multi-select
+	for _, g := range r.Form["groups"] {
+		for _, part := range strings.Split(g, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				groupSet[part] = true
 			}
 		}
+	}
+	// Process additional new group if provided
+	if newGroup != "" {
+		for _, part := range strings.Split(newGroup, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				groupSet[part] = true
+			}
+		}
+	}
+
+	var groups []string
+	for g := range groupSet {
+		groups = append(groups, g)
 	}
 
 	udb, _ := readUsersFile()
@@ -84,6 +102,7 @@ func handleUIUserSave(w http.ResponseWriter, r *http.Request) {
 	}
 	udb.Users[u] = rec
 	writeUsersFile(udb)
+	log.Printf("[users] User %q saved (groups: %s, disabled: %v) by %s", u, strings.Join(groups, ","), disabled, r.RemoteAddr)
 	http.Redirect(w, r, "/?tab=users&msg=User+saved", http.StatusSeeOther)
 }
 
@@ -93,6 +112,7 @@ func handleUIUserDelete(w http.ResponseWriter, r *http.Request) {
 		udb, _ := readUsersFile()
 		delete(udb.Users, u)
 		writeUsersFile(udb)
+		log.Printf("[users] User %q deleted by %s", u, r.RemoteAddr)
 	}
 	http.Redirect(w, r, "/?tab=users&msg=User+deleted", http.StatusSeeOther)
 }
@@ -150,6 +170,7 @@ func handleUIRuleSave(w http.ResponseWriter, r *http.Request) {
 		ac.Rules = append(ac.Rules, rule)
 	}
 	writeConfigFile(rawCfg, ac)
+	log.Printf("[rules] Rule saved (policy: %s, domain: %s) by %s", policy, domainRaw, r.RemoteAddr)
 	http.Redirect(w, r, "/?tab=rules&msg=Rule+saved", http.StatusSeeOther)
 }
 
@@ -165,6 +186,7 @@ func handleUIRuleMove(w http.ResponseWriter, r *http.Request) {
 		if idx >= 0 && target >= 0 && idx < len(ac.Rules) && target < len(ac.Rules) {
 			ac.Rules[idx], ac.Rules[target] = ac.Rules[target], ac.Rules[idx]
 			writeConfigFile(rawCfg, ac)
+			log.Printf("[rules] Rule index %d moved %s by %s", idx, dir, r.RemoteAddr)
 		}
 	}
 	http.Redirect(w, r, "/?tab=rules", http.StatusSeeOther)
@@ -177,6 +199,7 @@ func handleUIRuleDelete(w http.ResponseWriter, r *http.Request) {
 		if idx >= 0 && idx < len(ac.Rules) {
 			ac.Rules = append(ac.Rules[:idx], ac.Rules[idx+1:]...)
 			writeConfigFile(rawCfg, ac)
+			log.Printf("[rules] Rule index %d deleted by %s", idx, r.RemoteAddr)
 		}
 	}
 	http.Redirect(w, r, "/?tab=rules&msg=Rule+deleted", http.StatusSeeOther)

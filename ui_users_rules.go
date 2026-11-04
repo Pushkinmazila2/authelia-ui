@@ -13,6 +13,8 @@ import (
 func renderUsersTab(w http.ResponseWriter, currentTab, msg, editUsername string) {
 	renderHeader(w, currentTab, msg)
 	udb, _ := readUsersFile()
+	existingGroups, _ := getGroupsList()
+
 	editUser := UserRecord{}
 	isEdit := false
 	if editUsername != "" {
@@ -36,6 +38,25 @@ func renderUsersTab(w http.ResponseWriter, currentTab, msg, editUsername string)
 		ch = "checked"
 	}
 
+	userGroupMap := make(map[string]bool)
+	for _, g := range editUser.Groups {
+		userGroupMap[strings.TrimSpace(g)] = true
+	}
+
+	var groupOptions strings.Builder
+	if len(existingGroups) == 0 {
+		groupOptions.WriteString(`<option value="" disabled>(No groups created yet - enter below)</option>`)
+	} else {
+		for _, g := range existingGroups {
+			selected := ""
+			if userGroupMap[g.Name] {
+				selected = "selected"
+			}
+			groupOptions.WriteString(fmt.Sprintf(`<option value="%s" %s>%s (%d members)</option>`,
+				html.EscapeString(g.Name), selected, html.EscapeString(g.Name), g.Count))
+		}
+	}
+
 	fmt.Fprintf(w, `
 <h2>Users (<code>%s</code>)</h2>
 <fieldset>
@@ -44,7 +65,17 @@ func renderUsersTab(w http.ResponseWriter, currentTab, msg, editUsername string)
     <div class="form-row"><label>Username:</label><input type="text" name="username" value="%s" %s required></div>
     <div class="form-row"><label>Display Name:</label><input type="text" name="displayname" value="%s" required style="width:240px;"></div>
     <div class="form-row"><label>Email:</label><input type="email" name="email" value="%s" required style="width:240px;"></div>
-    <div class="form-row"><label>Groups:</label><input type="text" name="groups" value="%s" style="width:240px;" placeholder="admin, dev"></div>
+    <div class="form-row">
+      <label>Groups (Select):</label>
+      <select name="groups" multiple size="4" style="width:240px;vertical-align:top;">
+        %s
+      </select>
+      <span style="font-size:11px;color:#666;margin-left:6px;vertical-align:top;">(Hold Ctrl/Cmd to select multiple)</span>
+    </div>
+    <div class="form-row">
+      <label>New Group (Optional):</label>
+      <input type="text" name="new_group" placeholder="Type new group name if not in list" style="width:240px;">
+    </div>
     <div class="form-row"><label>Password:</label><input type="password" name="password" style="width:240px;" placeholder="%s"></div>
     <div class="form-row"><label>Disabled:</label><input type="checkbox" name="disabled" value="1" %s></div>
     <div class="form-row"><label></label><button type="submit" class="btn-primary">%s</button> %s</div>
@@ -57,7 +88,7 @@ func renderUsersTab(w http.ResponseWriter, currentTab, msg, editUsername string)
 		html.EscapeString(editUsername), ro,
 		html.EscapeString(editUser.DisplayName),
 		html.EscapeString(editUser.Email),
-		html.EscapeString(strings.Join(editUser.Groups, ", ")),
+		groupOptions.String(),
 		ph, ch, btn, cancelLink(isEdit, "/?tab=users"),
 	)
 

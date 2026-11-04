@@ -13,13 +13,16 @@ import (
 )
 
 type GuardInfoResponse struct {
-	AutheliaRunning   bool              `json:"authelia_running"`
-	AutheliaContainer string            `json:"authelia_container"`
-	AutheliaImage     string            `json:"authelia_image"`
-	AutheliaUptime    string            `json:"authelia_uptime"`
-	HostConfigPath    string            `json:"host_config_path"`
-	Mounts            map[string]string `json:"mounts"`
-	Env               map[string]string `json:"env"`
+	AutheliaRunning      bool              `json:"authelia_running"`
+	AutheliaContainer    string            `json:"authelia_container"`
+	AutheliaImage        string            `json:"authelia_image"`
+	AutheliaHealth       string            `json:"authelia_health"`
+	AutheliaRestartCount int               `json:"authelia_restart_count"`
+	AutheliaIP           string            `json:"authelia_ip"`
+	AutheliaUptime       string            `json:"authelia_uptime"`
+	HostConfigPath       string            `json:"host_config_path"`
+	Mounts               map[string]string `json:"mounts"`
+	Env                  map[string]string `json:"env"`
 }
 
 func runGuard() {
@@ -98,12 +101,19 @@ func handleGuardInfo(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	var insp struct {
-		Name  string `json:"Name"`
-		Image string `json:"Image"`
-		State struct {
+		Name         string `json:"Name"`
+		Image        string `json:"Image"`
+		RestartCount int    `json:"RestartCount"`
+		State        struct {
 			Running   bool   `json:"Running"`
 			StartedAt string `json:"StartedAt"`
+			Health    struct {
+				Status string `json:"Status"`
+			} `json:"Health"`
 		} `json:"State"`
+		NetworkSettings struct {
+			IPAddress string `json:"IPAddress"`
+		} `json:"NetworkSettings"`
 		Config struct {
 			Env []string `json:"Env"`
 		} `json:"Config"`
@@ -128,7 +138,17 @@ func handleGuardInfo(w http.ResponseWriter, r *http.Request) {
 	envMap := make(map[string]string)
 	for _, e := range insp.Config.Env {
 		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
+			k := parts[0]
+			v := parts[1]
+			// Mask sensitive environment variable values
+			if strings.Contains(strings.ToLower(k), "secret") || strings.Contains(strings.ToLower(k), "password") || strings.Contains(strings.ToLower(k), "key") {
+				if len(v) > 6 {
+					v = v[:3] + "..." + v[len(v)-3:]
+				} else {
+					v = "******"
+				}
+			}
+			envMap[k] = v
 		}
 	}
 	uptimeStr := "stopped"
@@ -142,14 +162,26 @@ func handleGuardInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	healthStatus := insp.State.Health.Status
+	if healthStatus == "" {
+		if insp.State.Running {
+			healthStatus = "running"
+		} else {
+			healthStatus = "stopped"
+		}
+	}
+
 	json.NewEncoder(w).Encode(GuardInfoResponse{
-		AutheliaRunning:   insp.State.Running,
-		AutheliaContainer: strings.TrimPrefix(insp.Name, "/"),
-		AutheliaImage:     insp.Image,
-		AutheliaUptime:    uptimeStr,
-		HostConfigPath:    hostConfig,
-		Mounts:            mountsMap,
-		Env:               envMap,
+		AutheliaRunning:      insp.State.Running,
+		AutheliaContainer:    strings.TrimPrefix(insp.Name, "/"),
+		AutheliaImage:        insp.Image,
+		AutheliaHealth:       healthStatus,
+		AutheliaRestartCount: insp.RestartCount,
+		AutheliaIP:           insp.NetworkSettings.IPAddress,
+		AutheliaUptime:       uptimeStr,
+		HostConfigPath:       hostConfig,
+		Mounts:               mountsMap,
+		Env:                  envMap,
 	})
 }
 

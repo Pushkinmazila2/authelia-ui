@@ -61,8 +61,12 @@ type AutheliaStatus struct {
 	Running           bool
 	ContainerName     string
 	ContainerImage    string
+	ContainerHealth   string
+	ContainerRestartCount int
+	ContainerIP       string
 	Uptime            string
 	HostConfigPath    string
+	Mounts            map[string]string
 	ConfigFound       bool
 	UsersDBFound      bool
 	DBFound           bool

@@ -55,20 +55,30 @@ func renderSessionsTab(w http.ResponseWriter, currentTab, msg string) {
 	renderFooter(w)
 }
 
-func renderLogsTab(w http.ResponseWriter, currentTab, msg string) {
+func renderLogsTab(w http.ResponseWriter, currentTab, msg, tail string) {
 	renderHeader(w, currentTab, msg)
-	logs := "No logs."
+	if tail == "" {
+		tail = "200"
+	}
+	logs := "No logs available."
+	source := "Unavailable"
+
 	if guardURL != "" {
+		source = "Docker Guard (" + guardURL + ")"
 		c := &http.Client{Timeout: 5 * time.Second}
-		if resp, err := c.Get(guardURL + "/api/guard/logs?tail=200"); err == nil {
+		if resp, err := c.Get(guardURL + "/api/guard/logs?tail=" + tail); err == nil {
 			defer resp.Body.Close()
 			b, _ := io.ReadAll(resp.Body)
 			logs = string(b)
+		} else {
+			logs = fmt.Sprintf("Error contacting Docker Guard: %v", err)
 		}
 	} else if _, err := os.Stat(dockerSocket); err == nil {
+		source = "Direct Docker Socket (" + dockerSocket + ")"
 		c := unixDialer()
 		if cid, err := findTargetContainer(c); err == nil {
-			if resp, err := c.Get("http://localhost/containers/" + cid + "/logs?stdout=true&stderr=true&tail=200"); err == nil {
+			source += fmt.Sprintf(" [Target: %s]", cid[:12])
+			if resp, err := c.Get("http://localhost/containers/" + cid + "/logs?stdout=true&stderr=true&tail=" + tail + "&timestamps=true"); err == nil {
 				defer resp.Body.Close()
 				var sb strings.Builder
 				sc := bufio.NewScanner(resp.Body)
@@ -81,9 +91,27 @@ func renderLogsTab(w http.ResponseWriter, currentTab, msg string) {
 					sb.WriteByte('\n')
 				}
 				logs = sb.String()
+			} else {
+				logs = fmt.Sprintf("Error fetching container logs: %v", err)
 			}
+		} else {
+			logs = fmt.Sprintf("Authelia container not found via socket: %v", err)
 		}
 	}
-	fmt.Fprintf(w, `<h2>Authelia Logs (Last 200 lines)</h2><p><a href="/?tab=logs" class="btn-primary" style="padding:2px 6px;">Refresh</a></p><pre style="background:#0f172a;color:#94a3b8;font-size:11px;height:480px;overflow-y:scroll;">%s</pre>`, html.EscapeString(logs))
+
+	fmt.Fprintf(w, `
+<h2>Authelia Logs</h2>
+<div style="margin-bottom:12px;">
+  <strong>Source:</strong> <code>%s</code> &nbsp;|&nbsp;
+  <strong>Tail Lines:</strong> 
+  <a href="/?tab=logs&tail=100" class="btn-primary" style="padding:1px 5px;font-size:11px;">100</a>
+  <a href="/?tab=logs&tail=200" class="btn-primary" style="padding:1px 5px;font-size:11px;">200</a>
+  <a href="/?tab=logs&tail=500" class="btn-primary" style="padding:1px 5px;font-size:11px;">500</a>
+  <a href="/?tab=logs&tail=1000" class="btn-primary" style="padding:1px 5px;font-size:11px;">1000</a>
+  &nbsp;&nbsp;
+  <a href="/?tab=logs&tail=%s" class="btn-primary" style="padding:2px 8px;">Refresh</a>
+</div>
+<pre style="background:#0f172a;color:#94a3b8;font-size:11px;height:520px;overflow-y:scroll;line-height:1.3;padding:10px;">%s</pre>
+`, html.EscapeString(source), html.EscapeString(tail), html.EscapeString(logs))
 	renderFooter(w)
 }

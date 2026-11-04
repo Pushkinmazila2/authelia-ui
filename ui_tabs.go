@@ -27,7 +27,7 @@ func handleUIRoute(w http.ResponseWriter, r *http.Request) {
 	case "sessions":
 		renderSessionsTab(w, tab, msg)
 	case "logs":
-		renderLogsTab(w, tab, msg)
+		renderLogsTab(w, tab, msg, r.URL.Query().Get("tail"))
 	default:
 		renderDashboardTab(w, tab, msg)
 	}
@@ -40,15 +40,41 @@ func renderDashboardTab(w http.ResponseWriter, currentTab, msg string) {
 	if st.Running {
 		runBadge = `<span class="badge badge-ok">RUNNING</span>`
 	}
+	healthBadge := ""
+	if st.ContainerHealth != "" {
+		if strings.Contains(strings.ToLower(st.ContainerHealth), "healthy") {
+			healthBadge = fmt.Sprintf(`<span class="badge badge-ok">%s</span>`, html.EscapeString(st.ContainerHealth))
+		} else {
+			healthBadge = fmt.Sprintf(`<span class="badge badge-warn">%s</span>`, html.EscapeString(st.ContainerHealth))
+		}
+	}
 	hostPath := "Direct mount"
 	if st.HostConfigPath != "" {
 		hostPath = "Host: " + html.EscapeString(st.HostConfigPath)
 	}
 
+	mountsSummary := ""
+	if len(st.Mounts) > 0 {
+		var ms []string
+		for dst, src := range st.Mounts {
+			ms = append(ms, fmt.Sprintf("<code>%s</code> &rarr; <code>%s</code>", html.EscapeString(src), html.EscapeString(dst)))
+		}
+		mountsSummary = strings.Join(ms, "<br>")
+	} else {
+		mountsSummary = "None detected"
+	}
+
+	containerIP := st.ContainerIP
+	if containerIP == "" {
+		containerIP = "N/A"
+	}
+
 	fmt.Fprintf(w, `
 <h2>System Status</h2>
 <table>
-  <tr><th style="width:200px;">Container</th><td>%s <strong>%s</strong> (Uptime: %s, Image: %s)</td></tr>
+  <tr><th style="width:200px;">Authelia Container</th><td>%s %s <strong>%s</strong> (Uptime: %s, Restarts: %d, IP: %s)</td></tr>
+  <tr><th>Container Image</th><td><code>%s</code></td></tr>
+  <tr><th>Container Mounts</th><td>%s</td></tr>
   <tr><th>Config Location</th><td>%s (Local: <code>%s</code>)</td></tr>
   <tr><th>users_database.yml</th><td>%s (<code>%s</code>)</td></tr>
   <tr><th>db.sqlite3</th><td>%s (%d bytes, <code>%s</code>)</td></tr>
@@ -65,7 +91,9 @@ func renderDashboardTab(w http.ResponseWriter, currentTab, msg string) {
 <h3>Recent Notification Output</h3>
 <pre>%s</pre>
 `,
-		runBadge, html.EscapeString(st.ContainerName), html.EscapeString(st.Uptime), html.EscapeString(st.ContainerImage),
+		runBadge, healthBadge, html.EscapeString(st.ContainerName), html.EscapeString(st.Uptime), st.ContainerRestartCount, html.EscapeString(containerIP),
+		html.EscapeString(st.ContainerImage),
+		mountsSummary,
 		hostPath, html.EscapeString(configPath),
 		badge(st.UsersDBFound), html.EscapeString(usersPath),
 		badge(st.DBFound), st.DBSize, html.EscapeString(dbPath),
