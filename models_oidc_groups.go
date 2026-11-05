@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"sort"
@@ -14,15 +15,127 @@ import (
 )
 
 type OIDCClient struct {
-	ID                  string   `yaml:"id" json:"id"`
-	Description         string   `yaml:"description,omitempty" json:"description,omitempty"`
-	Secret              string   `yaml:"secret,omitempty" json:"secret,omitempty"`
+	ID                  string   `yaml:"client_id" json:"client_id"`
+	Description         string   `yaml:"client_name,omitempty" json:"client_name,omitempty"`
+	Secret              string   `yaml:"client_secret,omitempty" json:"client_secret,omitempty"`
 	Public              bool     `yaml:"public,omitempty" json:"public,omitempty"`
 	AuthorizationPolicy string   `yaml:"authorization_policy,omitempty" json:"authorization_policy,omitempty"`
 	RedirectURIs        []string `yaml:"redirect_uris" json:"redirect_uris"`
 	Scopes              []string `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	GrantTypes          []string `yaml:"grant_types,omitempty" json:"grant_types,omitempty"`
 	ResponseTypes       []string `yaml:"response_types,omitempty" json:"response_types,omitempty"`
+}
+
+// UnmarshalYAML supports both modern (client_id, client_name, client_secret)
+// and legacy (id, description, secret) Authelia configuration keys.
+func (c *OIDCClient) UnmarshalYAML(value *yaml.Node) error {
+	type rawClient struct {
+		ClientID            string   `yaml:"client_id"`
+		LegacyID            string   `yaml:"id"`
+		ClientName          string   `yaml:"client_name"`
+		LegacyDescription   string   `yaml:"description"`
+		ClientSecret        string   `yaml:"client_secret"`
+		LegacySecret        string   `yaml:"secret"`
+		Public              bool     `yaml:"public"`
+		AuthorizationPolicy string   `yaml:"authorization_policy"`
+		RedirectURIs        []string `yaml:"redirect_uris"`
+		Scopes              []string `yaml:"scopes"`
+		GrantTypes          []string `yaml:"grant_types"`
+		ResponseTypes       []string `yaml:"response_types"`
+	}
+
+	var raw rawClient
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	c.ID = raw.ClientID
+	if c.ID == "" {
+		c.ID = raw.LegacyID
+	}
+
+	c.Description = raw.ClientName
+	if c.Description == "" {
+		c.Description = raw.LegacyDescription
+	}
+
+	c.Secret = raw.ClientSecret
+	if c.Secret == "" {
+		c.Secret = raw.LegacySecret
+	}
+
+	c.Public = raw.Public
+	c.AuthorizationPolicy = raw.AuthorizationPolicy
+	c.RedirectURIs = raw.RedirectURIs
+	c.Scopes = raw.Scopes
+	c.GrantTypes = raw.GrantTypes
+	c.ResponseTypes = raw.ResponseTypes
+
+	return nil
+}
+
+// UnmarshalJSON supports both client_id/id, client_name/description, client_secret/secret
+func (c *OIDCClient) UnmarshalJSON(data []byte) error {
+	type rawClient struct {
+		ClientID            string   `json:"client_id"`
+		LegacyID            string   `json:"id"`
+		ClientName          string   `json:"client_name"`
+		LegacyDescription   string   `json:"description"`
+		ClientSecret        string   `json:"client_secret"`
+		LegacySecret        string   `json:"secret"`
+		Public              bool     `json:"public"`
+		AuthorizationPolicy string   `json:"authorization_policy"`
+		RedirectURIs        []string `json:"redirect_uris"`
+		Scopes              []string `json:"scopes"`
+		GrantTypes          []string `json:"grant_types"`
+		ResponseTypes       []string `json:"response_types"`
+	}
+
+	var raw rawClient
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	c.ID = raw.ClientID
+	if c.ID == "" {
+		c.ID = raw.LegacyID
+	}
+
+	c.Description = raw.ClientName
+	if c.Description == "" {
+		c.Description = raw.LegacyDescription
+	}
+
+	c.Secret = raw.ClientSecret
+	if c.Secret == "" {
+		c.Secret = raw.LegacySecret
+	}
+
+	c.Public = raw.Public
+	c.AuthorizationPolicy = raw.AuthorizationPolicy
+	c.RedirectURIs = raw.RedirectURIs
+	c.Scopes = raw.Scopes
+	c.GrantTypes = raw.GrantTypes
+	c.ResponseTypes = raw.ResponseTypes
+
+	return nil
+}
+
+// MarshalJSON outputs both modern client_id/client_name/client_secret and legacy id/description/secret
+// so external consumers expecting either key will work seamlessly.
+func (c OIDCClient) MarshalJSON() ([]byte, error) {
+	type clientAlias OIDCClient
+	return json.Marshal(&struct {
+		LegacyID          string `json:"id"`
+		LegacyDescription string `json:"description,omitempty"`
+		LegacySecret      string `json:"secret,omitempty"`
+		clientAlias
+	}{
+		LegacyID:          c.ID,
+		LegacyDescription: c.Description,
+		LegacySecret:      c.Secret,
+		clientAlias:       clientAlias(c),
+	})
 }
 
 type GroupInfo struct {
@@ -113,8 +226,21 @@ func ensureOIDCSettings(oidc map[string]interface{}) error {
 		}
 		oidc["jwks"] = []map[string]interface{}{
 			{
-				"key": keyPEM,
+				"key_id":    "authelia-default",
+				"algorithm": "RS256",
+				"use":       "sig",
+				"key":       keyPEM,
 			},
+		}
+	}
+
+	// 3. Migrate legacy client field names to modern Authelia 4.38+ schema (client_id, client_name, client_secret)
+	if clientsRaw, ok := oidc["clients"]; ok && clientsRaw != nil {
+		if b, err := yaml.Marshal(clientsRaw); err == nil {
+			var clients []OIDCClient
+			if err := yaml.Unmarshal(b, &clients); err == nil {
+				oidc["clients"] = clients
+			}
 		}
 	}
 	return nil
@@ -178,7 +304,10 @@ func generateAndSaveOIDCJWKS() error {
 	}
 	oidc["jwks"] = []map[string]interface{}{
 		{
-			"key": keyPEM,
+			"key_id":    "authelia-default",
+			"algorithm": "RS256",
+			"use":       "sig",
+			"key":       keyPEM,
 		},
 	}
 	hmac, _ := oidc["hmac_secret"].(string)

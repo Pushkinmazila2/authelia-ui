@@ -134,6 +134,14 @@ func writeConfigFile(raw map[string]interface{}, ac AccessControlConfig) error {
 	defer fileLock.Unlock()
 
 	raw["access_control"] = ac
+
+	// If identity_providers.oidc exists, ensure JWKS and hmac_secret are present
+	if idp, ok := raw["identity_providers"].(map[string]interface{}); ok {
+		if oidc, ok := idp["oidc"].(map[string]interface{}); ok {
+			_ = ensureOIDCSettings(oidc)
+		}
+	}
+
 	data, err := yaml.Marshal(raw)
 	if err != nil {
 		return err
